@@ -1,33 +1,52 @@
-FROM macrosan/kylin:v10-sp1 AS base
+# ===================== 构建阶段 =====================
+FROM macrosan/kylin:v10-sp1 AS builder
 
-# After the installation is complete, you can delete the image to reduce its size
-# BUILD_VERSION is 03134284458-20251113-301923-20178
-# raw install package is dm8_20251114_HWarm920_kylin10_sp1_64.zip
+# 构建参数
 ARG INSTALL_FILE="DMInstall.bin"
+ARG CONFIG_XML="db_install.xml"
 
-ENV DM_HOME=/opt/dmdbms/bin \
-  SOFT_DIR=/soft \
-  INSTALL_DIR=/opt/dmdbms \
-  DATA_DIR=/opt/data \
-  CONFIG_XML="db_install.xml" \
-  CREATE_DB_FILE="db_instance.sh" 
-ENV PATH=$PATH:$DM_HOME \
-  LD_LIBRARY_PATH=$DM_HOME
-   
-# Add the installation file and configuration file to build the image
-RUN mkdir /soft && mkdir /opt/dmdbms && groupadd -g 12349 dinstall && useradd -u 12345 -g dinstall -m -d /home/dmdba -s /bin/bash dmdba
+# 构建时的路径变量
+ENV SOFT_DIR="/soft"
+ENV INSTALL_DIR="/opt/dmdbms"
 
-COPY $INSTALL_FILE $CONFIG_XML $CREATE_DB_FILE  $SOFT_DIR/
+# 创建达梦需要的用户和组
+RUN groupadd -g 12349 dinstall && \
+    useradd -u 12345 -g dinstall -m -d /home/dmdba -s /bin/bash dmdba
 
-# install db soft without init db instacne
-# fix log4j.xml problem
-RUN chmod a+x /soft/$INSTALL_FILE /soft/$CREATE_DB_FILE && \
-    /soft/$INSTALL_FILE -q /soft/$CONFIG_XML && \
-    rm -rf /soft/$INSTALL_FILE
+# 创建目录并授权
+RUN mkdir -p ${SOFT_DIR} ${INSTALL_DIR} && \
+    chown -R dmdba:dinstall ${SOFT_DIR} ${INSTALL_DIR}
 
-RUN mkdir $DATA_DIR && chown dmdba:dinstall $DATA_DIR -R
-WORKDIR /opt/dmdbms/bin
+# 拷贝安装文件
+COPY ${INSTALL_FILE} ${CONFIG_XML} ${SOFT_DIR}/
 
-#defalut startup dmdb
-CMD  ["/soft/db_instance.sh"]
+# 安装 + 清理
+RUN chmod a+x ${SOFT_DIR}/${INSTALL_FILE} && \
+    ${SOFT_DIR}/${INSTALL_FILE} -q ${SOFT_DIR}/${CONFIG_XML} && \
+    rm -rf ${SOFT_DIR}
+    
+# ===================== 最终运行镜像 =====================
+FROM macrosan/kylin:v10-sp1
 
+# 环境变量
+ENV INSTALL_DIR="/opt/dmdbms"
+ENV DM_HOME="${INSTALL_DIR}/bin"
+ENV DATA_DIR="/opt/data"
+ENV CREATE_DB_FILE="db_instance.sh"
+
+ENV PATH="${PATH}:${DM_HOME}"
+ENV LD_LIBRARY_PATH="${DM_HOME}"
+
+# 创建运行用户
+RUN groupadd -g 12349 dinstall && \
+    useradd -u 12345 -g dinstall -m -d /home/dmdba -s /bin/bash dmdba && \
+    mkdir -p ${DATA_DIR} && \
+    chown -R dmdba:dinstall ${DATA_DIR}
+
+COPY --from=builder ${INSTALL_DIR} ${INSTALL_DIR}
+COPY ${CREATE_DB_FILE} /
+
+RUN chmod a+x /${CREATE_DB_FILE}
+
+WORKDIR ${DM_HOME}
+CMD ["/db_instance.sh"]
