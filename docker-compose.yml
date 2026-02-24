@@ -1,0 +1,19 @@
+# 示例启动文件
+version: '3'
+services:
+  dm8:
+    image: 'dm8:8.4-arm'
+    container_name: "dm8"
+    restart: always
+    environment:
+      # CHARSET	字符集选项。0 代表 GB18030；1 代表UTF-8；2 代表韩文字符集 EUC-KR	取值 0、1 或 2 之一。缺省值为 0
+      CHARSET: 1
+      # SYSDBA账户的密码，不填默认为sysDBA123,要求8到48位密码，大写字母、小写字母、数字三个都要有。
+      SYSDBA_PWD: sysDBA123
+      #  大小写是否敏感，1=是，0=否，默认为1
+      CASE_SENSITIVE: 1
+      # SYSAUDITOR_PWD  默认sysAUDITOR123
+    ports:
+      - '5236:5236'
+    volumes:
+      - ./dm8:/opt/data
